@@ -1,0 +1,351 @@
+/*
+ * APGE client - connects a host screen or a phone to an APGE server.
+ *
+ *   const apge = APGE.connect();          // role comes from the page (host at /, player at /player)
+ *   apge.on('state', view => render(view));
+ *   apge.screens({lobby: 'lobby-screen', answer: 'answer-screen', '*': 'wait-screen'});
+ *   apge.join('My Name');                 // players
+ *   apge.action('submit', {text}).then(ack => ...);
+ *   apge.ready();                         // "Continue" in ready phases
+ *   apge.start(); apge.skip(); apge.reset();   // host computer only
+ *
+ * Rendering is up to the game: DOM, canvas, Phaser... APGE only delivers state.
+ */
+(function () {
+    'use strict';
+
+    function storageGet(store, key) {
+        try { return window[store].getItem(key); } catch (e) { return null; }
+    }
+    function storageSet(store, key, value) {
+        try { window[store].setItem(key, value); } catch (e) { /* private mode */ }
+    }
+    function storageRemove(store, key) {
+        try { window[store].removeItem(key); } catch (e) { /* private mode */ }
+    }
+
+    function el(target) {
+        return typeof target === 'string' ? document.getElementById(target) || document.querySelector(target) : target;
+    }
+
+    function escapeHtml(text) {
+        return String(text == null ? '' : text).replace(/[&<>"']/g, function (c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+        });
+    }
+
+    function Client(options) {
+        const config = Object.assign({}, window.APGE_CONFIG || {}, options || {});
+        this.role = config.role || 'player';
+        this.hostKey = config.hostKey || null;
+        this.view = null;
+        this.me = null;
+        this.phase = null;
+        this.connected = false;
+        this._handlers = {};
+        this._timerToken = null;
+        this._timerReceived = 0;
+
+        // Per-browser token: lets the server tell "me again" from "someone else with my name"
+        this.token = storageGet('localStorage', 'apge.token');
+        if (!this.token) {
+            this.token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+            storageSet('localStorage', 'apge.token', this.token);
+        }
+        // Name survives a page reload in the same tab, so a refresh rejoins automatically
+        this.name = this.role === 'player' ? storageGet('sessionStorage', 'apge.name') : null;
+
+        const socket = this.socket = io({
+            reconnection: true,
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 500,
+            reconnectionDelayMax: 3000,
+            timeout: 20000
+        });
+        const self = this;
+
+        socket.on('connect', function () {
+            self.connected = true;
+            self._badge();
+            self._emit('connection', true);
+            if (self.role === 'host') {
+                socket.emit('apge:host', {key: self.hostKey});
+            } else if (self.name) {
+                self.join(self.name, {auto: true});
+            }
+        });
+        socket.on('disconnect', function () {
+            self.connected = false;
+            self._badge();
+            self._emit('connection', false);
+        });
+        socket.on('apge:state', function (view) { self._onState(view); });
+        socket.on('apge:message', function (m) { self._emit('message', m.event, m.data); self._emit('message:' + m.event, m.data); });
+        socket.on('apge:relay', function (r) { self._emit('relay', r); });
+        socket.on('apge:replaced', function () {
+            self.me = null;
+            self._emit('replaced');
+            self.toast('This game was opened in another tab.');
+        });
+        socket.on('apge:kicked', function () {
+            self.me = null;
+            self.name = null;
+            storageRemove('sessionStorage', 'apge.name');
+            self._emit('kicked');
+            self.toast('The host removed you from the lobby.');
+        });
+
+        // Phones that wake from sleep should reconnect right away
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden && !socket.connected) socket.connect();
+        });
+    }
+
+    Client.prototype.on = function (event, fn) {
+        (this._handlers[event] = this._handlers[event] || []).push(fn);
+        // Late subscribers get the current state immediately
+        if (event === 'state' && this.view) fn(this.view);
+        return this;
+    };
+
+    Client.prototype._emit = function (event) {
+        const args = Array.prototype.slice.call(arguments, 1);
+        (this._handlers[event] || []).forEach(function (fn) {
+            try { fn.apply(null, args); } catch (e) { console.error('APGE handler for "' + event + '" failed:', e); }
+        });
+    };
+
+    Client.prototype._onState = function (view) {
+        const previousPhase = this.phase;
+        this.view = view;
+        this.me = view.me || null;
+        this.phase = view.phase;
+        // The server sends a fresh `remaining` with every view; count down locally from there
+        this._timerToken = view.timer ? view.timer.token : null;
+        this._timerReceived = Date.now();
+        if (previousPhase !== view.phase) this._emit('phase', view.phase, view, previousPhase);
+        this._emit('state', view);
+    };
+
+    function ackPromise(socket, event, payload) {
+        return new Promise(function (resolve) {
+            let done = false;
+            const timer = setTimeout(function () {
+                if (!done) { done = true; resolve({ok: false, error: 'No answer from the game - check your connection.'}); }
+            }, 8000);
+            socket.emit(event, payload, function (ack) {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                resolve(ack || {ok: true});
+            });
+        });
+    }
+
+    // ---- players ------------------------------------------------------------
+
+    Client.prototype.join = function (name, opts) {
+        const self = this;
+        opts = opts || {};
+        return ackPromise(this.socket, 'apge:join', {name: name, token: this.token}).then(function (ack) {
+            if (ack.ok) {
+                self.name = ack.player.name;
+                storageSet('sessionStorage', 'apge.name', self.name);
+                self._emit('joined', ack.player);
+            } else {
+                // Don't keep retrying a name the server refused
+                self.name = null;
+                storageRemove('sessionStorage', 'apge.name');
+                self._emit('join_error', ack.error);
+                if (!opts.auto) self.toast(ack.error);
+            }
+            return ack;
+        });
+    };
+
+    /** Send a game action. Resolves with the ack; shows the error as a toast unless {silent: true}. */
+    Client.prototype.action = function (name, data, opts) {
+        const self = this;
+        opts = opts || {};
+        return ackPromise(this.socket, 'apge:action', {name: name, data: data || {}}).then(function (ack) {
+            if (!ack.ok && !opts.silent) self.toast(ack.error);
+            return ack;
+        });
+    };
+
+    Client.prototype.ready = function () {
+        return ackPromise(this.socket, 'apge:ready', {});
+    };
+
+    /** Fire-and-forget input straight to the host screen (realtime controller games). */
+    Client.prototype.relay = function (event, data) {
+        this.socket.volatile.emit('apge:relay', {event: event, data: data});
+    };
+
+    // ---- host -----------------------------------------------------------------
+
+    Client.prototype._host = function (command, extra) {
+        const self = this;
+        return ackPromise(this.socket, 'apge:host_command', Object.assign({command: command}, extra || {}))
+            .then(function (ack) { if (!ack.ok) self.toast(ack.error); return ack; });
+    };
+    Client.prototype.start = function () { return this._host('start'); };
+    Client.prototype.skip = function () { return this._host('skip'); };
+    Client.prototype.reset = function () { return this._host('reset'); };
+    Client.prototype.kick = function (playerId) { return this._host('kick', {player_id: playerId}); };
+    Client.prototype.isHost = function () { return !!(this.view && this.view.role === 'host'); };
+
+    // ---- timers -----------------------------------------------------------------
+
+    /** Seconds left on the current phase timer (null if none), counting down locally between updates. */
+    Client.prototype.timeRemaining = function () {
+        const t = this.view && this.view.timer;
+        if (!t) return null;
+        return Math.max(0, t.remaining - (Date.now() - this._timerReceived) / 1000);
+    };
+
+    /** Keep an element showing the countdown. Optional `bar` element gets its width set. */
+    Client.prototype.bindCountdown = function (target, bar) {
+        const self = this;
+        const node = el(target), fill = bar ? el(bar) : null;
+        setInterval(function () {
+            const left = self.timeRemaining();
+            if (node) {
+                node.textContent = left == null ? '' : Math.ceil(left) + 's';
+                node.classList.toggle('apge-urgent', left != null && left <= 5);
+            }
+            if (fill) {
+                const t = self.view && self.view.timer;
+                fill.style.width = t ? (100 * left / t.duration) + '%' : '0%';
+            }
+        }, 200);
+        return this;
+    };
+
+    // ---- screens ----------------------------------------------------------------
+
+    /**
+     * Show one element per phase: {phase: elementId, ..., '*': fallbackId}.
+     * Optional 'join' entry is shown to players who haven't joined yet.
+     */
+    Client.prototype.screens = function (map) {
+        const self = this;
+        const ids = Object.keys(map).map(function (k) { return map[k]; });
+        function show(view) {
+            let id = map[view.phase] || map['*'];
+            if (self.role === 'player' && !view.me && map.join) id = map.join;
+            ids.forEach(function (other) {
+                const node = el(other);
+                if (node) node.classList.toggle('apge-active', other === id);
+            });
+        }
+        this.on('state', show);
+        return this;
+    };
+
+    // ---- small built-in UI --------------------------------------------------------
+
+    Client.prototype.toast = function (message) {
+        if (!message) return;
+        let box = document.getElementById('apge-toast');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'apge-toast';
+            document.body.appendChild(box);
+        }
+        box.textContent = message;
+        box.classList.add('apge-show');
+        clearTimeout(this._toastTimer);
+        this._toastTimer = setTimeout(function () { box.classList.remove('apge-show'); }, 3500);
+    };
+
+    Client.prototype._badge = function () {
+        let badge = document.getElementById('apge-connection');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'apge-connection';
+            badge.textContent = 'Reconnecting...';
+            document.body.appendChild(badge);
+        }
+        badge.classList.toggle('apge-show', !this.connected);
+    };
+
+    /** A name box + Join button. Shows join errors underneath. */
+    Client.prototype.mountJoinForm = function (target, opts) {
+        const self = this;
+        opts = opts || {};
+        const root = el(target);
+        root.innerHTML =
+            '<form class="apge-join">' +
+            '<input class="apge-input" maxlength="24" autocomplete="off" placeholder="' + escapeHtml(opts.placeholder || 'Your name') + '">' +
+            '<button class="apge-button" type="submit">' + escapeHtml(opts.button || 'Join') + '</button>' +
+            '<p class="apge-error"></p></form>';
+        const input = root.querySelector('input'), error = root.querySelector('.apge-error');
+        input.value = this.name || '';
+        root.querySelector('form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const name = input.value.trim();
+            if (!name) return;
+            error.textContent = '';
+            self.join(name, {auto: true}).then(function (ack) { if (!ack.ok) error.textContent = ack.error; });
+        });
+        return this;
+    };
+
+    /**
+     * Host lobby/controls panel: QR code, join URL, player list, Start / Skip / New Game.
+     * Games with their own art can skip this and call start()/skip()/reset() directly.
+     */
+    Client.prototype.mountHostPanel = function (target) {
+        const self = this;
+        const root = el(target);
+        root.innerHTML =
+            '<div class="apge-panel">' +
+            '<div class="apge-qr"><img src="/apge-qr.png" alt="Scan to join"><p class="apge-url"></p></div>' +
+            '<ul class="apge-players"></ul>' +
+            '<div class="apge-controls">' +
+            '<button class="apge-button" data-cmd="start">Start</button>' +
+            '<button class="apge-button apge-secondary" data-cmd="skip">Skip waiting players</button>' +
+            '<button class="apge-button" data-cmd="reset">New game</button>' +
+            '</div><p class="apge-note"></p></div>';
+        fetch('/apge-info').then(function (r) { return r.json(); }).then(function (info) {
+            root.querySelector('.apge-url').textContent = info.player_url;
+        }).catch(function () { /* offline host page - URL just stays blank */ });
+
+        root.querySelectorAll('[data-cmd]').forEach(function (b) {
+            b.addEventListener('click', function () {
+                const cmd = b.getAttribute('data-cmd');
+                if (cmd === 'skip' && !confirm('Skip everyone who hasn\'t finished this step?')) return;
+                if (cmd === 'reset' && !confirm('Start a new game with the same players?')) return;
+                self[cmd]();
+            });
+        });
+
+        this.on('state', function (view) {
+            const lobby = view.phase === 'lobby', over = view.phase === (view.end_phase || 'game_over');
+            const host = view.role === 'host';
+            root.querySelector('.apge-qr').style.display = lobby ? '' : 'none';
+            root.querySelector('[data-cmd=start]').style.display = host && lobby ? '' : 'none';
+            root.querySelector('[data-cmd=start]').disabled = view.players.length < view.min_players;
+            root.querySelector('[data-cmd=skip]').style.display = host && !lobby && !over ? '' : 'none';
+            root.querySelector('[data-cmd=reset]').style.display = host && over ? '' : 'none';
+            root.querySelector('.apge-note').textContent = host ? '' :
+                'View only - host controls are on the computer running the game.';
+            root.querySelector('.apge-players').innerHTML = view.players.map(function (p) {
+                const kick = host && lobby ? ' <button class="apge-kick" data-id="' + p.id + '" title="Remove">✕</button>' : '';
+                return '<li class="' + (p.connected ? '' : 'apge-offline') + '">' + escapeHtml(p.name) +
+                    (p.connected ? '' : ' (disconnected)') + (p.ready ? ' ✓' : '') + kick + '</li>';
+            }).join('') || '<li class="apge-offline">Waiting for players...</li>';
+            root.querySelectorAll('.apge-kick').forEach(function (b) {
+                b.addEventListener('click', function () { self.kick(b.getAttribute('data-id')); });
+            });
+        });
+        return this;
+    };
+
+    window.APGE = {
+        connect: function (options) { return new Client(options); },
+        escapeHtml: escapeHtml,
+        version: '0.1.0'
+    };
+})();

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    {{ apge_head() }}
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="phone">
+    <h1 class="logo">{{ title }}</h1>
+    <p id="who"></p>
+
+    <section id="join" class="apge-screen">
+        <p>Enter your name to join.</p>
+        <div id="join-form"></div>
+    </section>
+
+    <section id="lobby" class="apge-screen">
+        <h2>You're in!</h2>
+        <p>Waiting for the host to start the game...</p>
+    </section>
+
+    <section id="write" class="apge-screen">
+        <p class="timer" id="write-timer"></p>
+        <h2 class="prompt" data-prompt></h2>
+        <form id="answer-form">
+            <input id="answer-text" class="apge-input" maxlength="80" autocomplete="off" placeholder="Your answer">
+            <button class="apge-button">Send</button>
+        </form>
+        <p id="answer-sent" class="done">Answer sent! Waiting for everyone else...</p>
+    </section>
+
+    <section id="vote" class="apge-screen">
+        <p class="timer" id="vote-timer"></p>
+        <h2 class="prompt" data-prompt></h2>
+        <p>Vote for your favourite:</p>
+        <div id="vote-options"></div>
+        <p id="vote-sent" class="done"></p>
+    </section>
+
+    <section id="reveal" class="apge-screen">
+        <p class="timer" id="reveal-timer"></p>
+        <h2>Results</h2>
+        <ol id="reveal-results" class="results"></ol>
+        <button class="apge-button" id="continue">Continue</button>
+    </section>
+
+    <section id="game_over" class="apge-screen">
+        <h2>Final scores</h2>
+        <ol id="final-results" class="results"></ol>
+        <p>Thanks for playing!</p>
+    </section>
+
+    <script src="{{ url_for('static', filename='player.js') }}"></script>
+</body>
+</html>

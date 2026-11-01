@@ -1,0 +1,20 @@
+/* __GAME_TITLE__ styles - replace freely */
+body {
+    margin: 0; padding: 16px;
+    background: #141414; color: #f2f2f2;
+    font-family: system-ui, -apple-system, sans-serif; text-align: center;
+}
+.logo { color: #e50914; margin: 8px 0; }
+.phone { max-width: 480px; margin: 0 auto; }
+.host .big { font-size: 2.2rem; }
+.prompt { margin: 16px 0; }
+.timer { font-size: 1.4rem; font-weight: bold; color: #4caf50; min-height: 1.5em; }
+.timer.apge-urgent { color: #e50914; }
+.done { color: #4caf50; }
+#answer-form { display: flex; flex-direction: column; gap: 10px; }
+.option { display: block; width: 100%; margin: 8px 0; background: #333; }
+.option.chosen { background: #e50914; }
+.results, .answers { text-align: left; max-width: 640px; margin: 16px auto; padding-left: 1.5em; }
+.results li, .answers li { margin: 10px 0; font-size: 1.2rem; }
+.results span { color: #ffd700; }
+#panel { margin-top: 32px; }

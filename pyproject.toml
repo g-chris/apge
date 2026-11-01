@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apge"
+version = "0.1.0"
+description = "Async Party Game Engine: one host screen, many phones, one local network"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "Flask>=3.0,<4",
+    "flask-socketio>=5.3.5,<6",
+    "python-socketio>=5.10,<6",
+    "simple-websocket>=1.0",
+    "qrcode[pil]>=7.4",
+]
+
+[project.optional-dependencies]
+testing = ["python-socketio[client]>=5.10,<6"]
+
+[tool.setuptools]
+packages = ["apge"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+apge = ["static/*", "scaffold/**/*", "scaffold/*"]

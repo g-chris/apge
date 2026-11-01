@@ -1,0 +1,44 @@
+/* APGE defaults: only the engine's own widgets. Games style everything else. */
+
+/* Screens: apge.screens() toggles .apge-active */
+.apge-screen { display: none; }
+.apge-screen.apge-active { display: block; }
+
+#apge-connection {
+    position: fixed; top: 10px; right: 10px; z-index: 10000;
+    padding: 6px 12px; border-radius: 6px;
+    background: #8b0000; color: #fff; font: bold 14px system-ui, sans-serif;
+    display: none;
+}
+#apge-connection.apge-show { display: block; }
+
+#apge-toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(150%);
+    max-width: 90vw; padding: 12px 18px; border-radius: 8px; z-index: 10000;
+    background: #222; color: #fff; font: 16px system-ui, sans-serif; text-align: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    transition: transform 0.25s ease; pointer-events: none;
+}
+#apge-toast.apge-show { transform: translateX(-50%) translateY(0); }
+
+.apge-join { display: flex; flex-direction: column; gap: 10px; max-width: 360px; margin: 0 auto; }
+.apge-input { font-size: 18px; padding: 12px; border-radius: 8px; border: 1px solid #666; }
+.apge-button {
+    font-size: 18px; padding: 12px 18px; border: 0; border-radius: 8px;
+    background: #e50914; color: #fff; cursor: pointer; touch-action: manipulation;
+}
+.apge-button:disabled { opacity: 0.5; cursor: default; }
+.apge-button.apge-secondary { background: #555; }
+.apge-error { color: #ff9800; min-height: 1.2em; margin: 0; }
+
+.apge-panel { font-family: system-ui, sans-serif; }
+.apge-qr { text-align: center; }
+.apge-qr img { background: #fff; padding: 8px; border-radius: 8px; width: 240px; max-width: 70vw; }
+.apge-url { font-weight: bold; }
+.apge-players { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.apge-players li { padding: 8px 12px; border-radius: 8px; background: rgba(127, 127, 127, 0.2); }
+.apge-players li.apge-offline { opacity: 0.5; }
+.apge-kick { background: none; border: 0; color: inherit; cursor: pointer; }
+.apge-controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.apge-note { text-align: center; opacity: 0.7; }
+.apge-urgent { color: #e50914; }
