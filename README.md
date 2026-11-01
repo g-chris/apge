@@ -157,3 +157,7 @@ Link `releases/latest/download/<file>` from your README.
 ## Versioning
 
 Games pin an exact tag (`apge @ git+https://github.com/g-chris/apge@v0.1.0`). Improve APGE while building a game, tag a new version, and bump the game's pin when you're ready. Breaking changes bump the minor version while APGE is 0.x, and [CHANGELOG.md](CHANGELOG.md) says what to change.
+
+## Licence
+
+MIT - see [LICENSE](LICENSE).

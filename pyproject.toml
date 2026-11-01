@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Async Party Game Engine: one host screen, many phones, one local network"
 readme = "README.md"
 requires-python = ">=3.9"
+license = {text = "MIT"}
 dependencies = [
     "Flask>=3.0,<4",
     "flask-socketio>=5.3.5,<6",
