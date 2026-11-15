@@ -6,12 +6,14 @@ bot harness really does catch broken games.
 """
 import os
 import sys
+import tempfile
 import time
 import unittest
 
 import socketio
 
 from apge import Game, Reject, action, on_all_ready, on_timeout, phase
+from apge.__main__ import new_game
 from apge.testing import Bot, TestServer, run_scenario
 
 SCAFFOLD = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'apge', 'scaffold')
@@ -220,6 +222,88 @@ class ProtocolTests(unittest.TestCase):
         h.call('apge:host_command', {'command': 'kick', 'player_id': b.ack['player']['id']})
         self.assertEqual([p.name for p in self.game.players.values()], ['Ann'])
 
+    def test_name_length_comes_from_the_game(self):
+        self.game.max_name = 5
+        a = self.join('Annabelle')
+        self.assertEqual(a.ack['player']['name'], 'Annab')
+        settle()
+        self.assertEqual(a.views[-1]['max_name'], 5)
+
+    def test_vip_phone_may_send_only_vip_commands(self):
+        self.game.vip_commands = ('start',)
+        a = self.join('Ann')
+        b = self.join('Bob')
+        settle()
+        self.assertEqual(b.views[-1]['vip_id'], a.ack['player']['id'])
+        self.assertFalse(b.call('apge:host_command', {'command': 'start'})['ok'])
+        self.assertEqual(self.game.phase, 'lobby')
+        self.assertTrue(a.call('apge:host_command', {'command': 'start'})['ok'])
+        self.assertEqual(self.game.phase, 'tap')
+        # Skip isn't a VIP command: a phone must not be able to rush everyone else
+        self.assertFalse(a.call('apge:host_command', {'command': 'skip'})['ok'])
+        self.assertEqual(self.game.phase, 'tap')
+
+    def test_vip_passes_on_when_vip_disconnects(self):
+        self.game.vip_commands = ('start',)
+        a = self.join('Ann')
+        b = self.join('Bob')
+        a.disconnect()
+        settle()
+        self.assertEqual(b.views[-1]['vip_id'], b.ack['player']['id'])
+        self.assertTrue(b.call('apge:host_command', {'command': 'start'})['ok'])
+
+    def test_no_vip_unless_the_game_opts_in(self):
+        a = self.join('Ann')
+        settle()
+        self.assertIsNone(a.views[-1]['vip_id'])
+        self.assertFalse(a.call('apge:host_command', {'command': 'start'})['ok'])
+
+    def test_quit_removes_every_player(self):
+        a = self.join('Ann')
+        self.join('Bob')
+        kicked = []
+        a.on('apge:kicked', lambda d: kicked.append(d))
+        h = self.host()
+        h.call('apge:host_command', {'command': 'start'})
+        self.assertTrue(h.call('apge:host_command', {'command': 'quit'})['ok'])
+        settle()
+        self.assertEqual(self.game.phase, 'lobby')
+        self.assertEqual(self.game.players, {})
+        self.assertEqual(kicked, [{'reason': 'quit'}])
+        self.assertFalse(a.call('apge:action', {'name': 'tap', 'data': {}})['ok'])
+        # Same phone can join the next session
+        self.assertTrue(a.call('apge:join', {'name': 'Ann', 'token': 'Ann-token'})['ok'])
+
+    def test_lobby_ready_is_reported(self):
+        a = self.join('Ann')
+        settle()
+        self.assertTrue(a.views[-1]['lobby_ready'])
+        self.game.lobby_ready = lambda: False
+        self.game.mark_dirty()
+        self.join('Bob')
+        settle()
+        self.assertFalse(a.views[-1]['lobby_ready'])
+
+
+class ScaffoldTests(unittest.TestCase):
+    def test_new_game_into_fresh_git_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.mkdir(os.path.join(tmp, '.git'))
+            new_game(tmp, 'Fresh Repo')
+            self.assertTrue(os.path.exists(os.path.join(tmp, 'game.py')))
+
+    def test_slug_ignores_apostrophes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            new_game(tmp, "Gambler's Derby '27")
+            with open(os.path.join(tmp, 'build.spec')) as f:
+                self.assertIn("name='GamblersDerby27'", f.read())
+
+    def test_new_game_refuses_a_dir_with_work_in_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            open(os.path.join(tmp, 'notes.txt'), 'w').close()
+            with self.assertRaises(SystemExit):
+                new_game(tmp, 'Clash')
+
 
 # ---- the harness must catch broken games --------------------------------------------
 
@@ -234,6 +318,29 @@ class CrashingHotTake(HotTake):
     @action('vote', phases='vote')
     def vote(self, player, data):
         raise KeyError('oops')
+
+
+class SetupCounter(Counter):
+    """Players must 'setup' (think: draw an avatar) in the lobby before the game is ready."""
+
+    def lobby_ready(self):
+        return bool(self.players) and all(p.private.get('setup') for p in self.players.values())
+
+    @action('setup', phases='lobby')
+    def setup(self, player, data):
+        player.private['setup'] = True
+
+    def on_start(self):
+        self.public['set_up_at_start'] = sum(bool(p.private.get('setup')) for p in self.players.values())
+        super().on_start()
+
+
+class SetupBot(Bot):
+    def decide(self, view):
+        if view['phase'] == 'lobby' and not view['me']['private'].get('setup'):
+            return [('setup', {})]
+        if view['phase'] == 'tap' and not view['me']['private'].get('tapped'):
+            return [('tap', {})]
 
 
 class HarnessSelfTests(unittest.TestCase):
@@ -255,6 +362,22 @@ class HarnessSelfTests(unittest.TestCase):
         res = run_scenario(HotTake, self.bots, invariant=invariant, stall=5)
         self.assertFalse(res.passed)
         self.assertTrue(any('reached reveal' in v for v in res.violations))
+
+    def test_waits_for_lobby_setup_before_start(self):
+        games = []
+
+        def make():
+            games.append(SetupCounter())
+            return games[-1]
+        bots = [(SetupBot, {'delay': (0.5, 1.0)}) for _ in range(3)]
+        res = run_scenario(make, bots, stall=5)
+        self.assertTrue(res.passed, res.summary())
+        self.assertEqual(games[-1].public['set_up_at_start'], 3)
+
+    def test_starts_anyway_when_lobby_setup_never_finishes(self):
+        res = run_scenario(SetupCounter, [(SetupBot, {'idle': True})], stall=5, start_wait=0.5,
+                           host_skip_after=1.0)
+        self.assertTrue(res.passed, res.summary())
 
     def test_healthy_game_passes(self):
         res = run_scenario(HotTake, self.bots + [(HotTakeBot, {'flaky': 0.05})])

@@ -7,7 +7,8 @@
  *   apge.join('My Name');                 // players
  *   apge.action('submit', {text}).then(ack => ...);
  *   apge.ready();                         // "Continue" in ready phases
- *   apge.start(); apge.skip(); apge.reset();   // host computer only
+ *   apge.start(); apge.skip(); apge.reset(); apge.quit();   // host computer (and the VIP's
+ *                                                           // phone, for the game's vip_commands)
  *
  * Rendering is up to the game: DOM, canvas, Phaser... APGE only delivers state.
  */
@@ -87,12 +88,14 @@
             self._emit('replaced');
             self.toast('This game was opened in another tab.');
         });
-        socket.on('apge:kicked', function () {
+        socket.on('apge:kicked', function (info) {
+            const reason = (info && info.reason) || 'kick';
             self.me = null;
             self.name = null;
             storageRemove('sessionStorage', 'apge.name');
-            self._emit('kicked');
-            self.toast('The host removed you from the lobby.');
+            self._emit('kicked', reason);
+            self.toast(reason === 'quit' ? 'The host ended the game. Join again to play!'
+                                         : 'The host removed you from the lobby.');
         });
 
         // Phones that wake from sleep should reconnect right away
@@ -192,8 +195,14 @@
     Client.prototype.start = function () { return this._host('start'); };
     Client.prototype.skip = function () { return this._host('skip'); };
     Client.prototype.reset = function () { return this._host('reset'); };
+    /** End the session: back to the lobby and every player is removed (they rejoin to play again). */
+    Client.prototype.quit = function () { return this._host('quit'); };
     Client.prototype.kick = function (playerId) { return this._host('kick', {player_id: playerId}); };
     Client.prototype.isHost = function () { return !!(this.view && this.view.role === 'host'); };
+    /** True on the phone of the player the game lets send its vip_commands (e.g. Start). */
+    Client.prototype.isVip = function () {
+        return !!(this.view && this.me && this.view.vip_id && this.view.vip_id === this.me.id);
+    };
 
     // ---- timers -----------------------------------------------------------------
 
@@ -282,6 +291,8 @@
             '<p class="apge-error"></p></form>';
         const input = root.querySelector('input'), error = root.querySelector('.apge-error');
         input.value = this.name || '';
+        // The game decides the longest name (Game.max_name)
+        this.on('state', function (view) { if (view.max_name) input.maxLength = view.max_name; });
         root.querySelector('form').addEventListener('submit', function (e) {
             e.preventDefault();
             const name = input.value.trim();
@@ -307,6 +318,7 @@
             '<button class="apge-button" data-cmd="start">Start</button>' +
             '<button class="apge-button apge-secondary" data-cmd="skip">Skip waiting players</button>' +
             '<button class="apge-button" data-cmd="reset">New game</button>' +
+            '<button class="apge-button apge-secondary" data-cmd="quit">End game</button>' +
             '</div><p class="apge-note"></p></div>';
         fetch('/apge-info').then(function (r) { return r.json(); }).then(function (info) {
             root.querySelector('.apge-url').textContent = info.player_url;
@@ -317,6 +329,7 @@
                 const cmd = b.getAttribute('data-cmd');
                 if (cmd === 'skip' && !confirm('Skip everyone who hasn\'t finished this step?')) return;
                 if (cmd === 'reset' && !confirm('Start a new game with the same players?')) return;
+                if (cmd === 'quit' && !confirm('End the game? Everyone will need to join again.')) return;
                 self[cmd]();
             });
         });
@@ -329,6 +342,7 @@
             root.querySelector('[data-cmd=start]').disabled = view.players.length < view.min_players;
             root.querySelector('[data-cmd=skip]').style.display = host && !lobby && !over ? '' : 'none';
             root.querySelector('[data-cmd=reset]').style.display = host && over ? '' : 'none';
+            root.querySelector('[data-cmd=quit]').style.display = host && over ? '' : 'none';
             root.querySelector('.apge-note').textContent = host ? '' :
                 'View only - host controls are on the computer running the game.';
             root.querySelector('.apge-players').innerHTML = view.players.map(function (p) {

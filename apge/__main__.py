@@ -18,10 +18,16 @@ RENAMES = {'gitignore': '.gitignore', 'github': '.github'}
 TEXT_SUFFIXES = ('.py', '.html', '.js', '.css', '.md', '.txt', '.yml', '.spec', 'gitignore')
 
 
+# A fresh `git init`, GitHub's initial commit or a venv shouldn't stop you scaffolding into a dir
+IGNORABLE = {'.git', '.DS_Store', 'LICENSE', '.gitattributes', 'venv', '.venv'}
+
+
 def new_game(target, title):
-    if os.path.exists(target) and os.listdir(target):
+    existing = set(os.listdir(target)) if os.path.exists(target) else set()
+    if existing - IGNORABLE:
         sys.exit(f'{target} already exists and is not empty.')
-    slug = re.sub(r'[^A-Za-z0-9]+', '', title.title()) or 'Game'
+    # Drop apostrophes first: str.title() would make "Gambler's" into "Gambler'S"
+    slug = re.sub(r'[^A-Za-z0-9]+', '', re.sub(r"['\u2019]", '', title).title()) or 'Game'
     replacements = {'__GAME_TITLE__': title, '__GAME_SLUG__': slug, '__APGE_VERSION__': __version__}
 
     for root, dirs, files in os.walk(SCAFFOLD):

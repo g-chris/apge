@@ -1,5 +1,44 @@
 # APGE Changelog
 
+## 0.2.0 (2026-11-15)
+
+Added while building Down Under Gambler's Sweat It Out! Derby '27, whose lobby has players
+draw an avatar and spend skill points, and whose first finished player runs the game.
+Everything is opt-in: games on 0.1.x can bump their pin without code changes.
+
+### New Features
+- **VIP phone controls**: `Game.vip_commands` (e.g. `('start', 'reset', 'quit')`) lets one
+  player's phone send those host commands. `Game.vip()` picks the player (default: first
+  connected player; override it, e.g. first to finish their character). Views carry
+  `vip_id`; `apge.isVip()` on the phone. Skip is never a VIP command by design, and the
+  host computer keeps every control
+- **Quit**: new `quit` host command (`apge.quit()`, and an "End game" button in the host
+  panel at game over) goes back to the lobby and removes every player. Phones return to
+  the join screen with a message. `Game.on_quit()` hook
+- **Per-game name length**: `Game.max_name` (default 24) is enforced by the server and the
+  join form; views carry `max_name`
+- **Lobby setup**: `Game.lobby_ready()` hook says whether everyone has finished lobby setup
+  (shown to screens as `lobby_ready`). The bot harness now waits for it, up to
+  `run_scenario(start_wait=5.0)` seconds, before pressing Start - and after New Game - so
+  bots can do lobby setup in `decide()` like any other phase
+
+### Bug Fixes
+- **Couldn't scaffold into a fresh repo** (MEDIUM)
+  - Issue: `python -m apge new .` refused a directory holding only `.git` (or a venv)
+  - Root cause: any directory entry counted as "not empty"
+  - Solution: `.git`, `venv`, `.venv`, `LICENSE`, `.gitattributes` and `.DS_Store` are ignored
+  - Files modified: apge/__main__.py
+- **Executable named "Gambler'S" style slugs** (LOW)
+  - Issue: a title like "Gambler's Derby" produced the slug `GamblerSDerby`
+  - Root cause: `str.title()` capitalises the letter after an apostrophe
+  - Solution: apostrophes are dropped before title-casing
+  - Files modified: apge/__main__.py
+
+### Packaging / Internal
+- Kick and quit share one player-removal path in the server (`_unbind`)
+- Engine tests: VIP rules, quit, name length, lobby_ready, the harness waiting for lobby
+  setup (and starting anyway when it never finishes), scaffolding into a git repo
+
 ## 0.1.1 (2026-11-15)
 
 - New games get `CONVENTIONS.txt` (changelog format, versions and releases, branches,
