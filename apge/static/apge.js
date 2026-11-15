@@ -346,6 +346,6 @@
     window.APGE = {
         connect: function (options) { return new Client(options); },
         escapeHtml: escapeHtml,
-        version: '0.1.0'
+        version: (window.APGE_CONFIG || {}).apgeVersion
     };
 })();

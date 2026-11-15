@@ -15,7 +15,7 @@ You write the rules and the art. APGE handles:
 ## Start a new game
 
 ```bash
-pip install "apge[testing] @ git+https://github.com/g-chris/apge@v0.1.0"
+pip install "apge[testing] @ git+https://github.com/g-chris/apge@v0.1.1"
 python -m apge new my-game --title "My Game"
 cd my-game
 python app.py                 # host screen opens at http://localhost:8080
@@ -23,6 +23,8 @@ python tests/test_bots.py     # bots play the game
 ```
 
 The starter, *Hot Take*, is a small but complete game: answer a prompt, vote anonymously, see the scores, play 3 rounds. Change it into your game.
+
+Every new game also gets `CONVENTIONS.txt`: how we handle changelogs, versions, releases, pull requests and reviews, reusable code, and testing. Fill in its GAME DESIGN section from your design doc, and give it to Claude at the start of each session.
 
 ## Writing a game
 
@@ -156,7 +158,7 @@ Link `releases/latest/download/<file>` from your README.
 
 ## Versioning
 
-Games pin an exact tag (`apge @ git+https://github.com/g-chris/apge@v0.1.0`). Improve APGE while building a game, tag a new version, and bump the game's pin when you're ready. Breaking changes bump the minor version while APGE is 0.x, and [CHANGELOG.md](CHANGELOG.md) says what to change.
+Games pin an exact tag (`apge @ git+https://github.com/g-chris/apge@v0.1.1`). Improve APGE while building a game, tag a new version, and bump the game's pin when you're ready. Breaking changes bump the minor version while APGE is 0.x, and [CHANGELOG.md](CHANGELOG.md) says what to change.
 
 ## Licence
 

@@ -16,6 +16,7 @@ The host screen opens at http://localhost:8080. Players on the same Wi-Fi scan t
 
 | File | What it is |
 |---|---|
+| `CONVENTIONS.txt` | How we work: changelog, releases, PRs and reviews, DRY code, testing. Fill in GAME DESIGN |
 | `game.py` | The rules: phases, actions, timers, scoring |
 | `templates/` + `static/` | Host (TV) and player (phone) pages |
 | `tests/test_bots.py` | Bots play full games: `python tests/test_bots.py` (needs `pip install "python-socketio[client]"`) |

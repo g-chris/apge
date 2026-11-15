@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "apge"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Async Party Game Engine: one host screen, many phones, one local network"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -20,9 +20,12 @@ dependencies = [
 [project.optional-dependencies]
 testing = ["python-socketio[client]>=5.10,<6"]
 
+[tool.setuptools.dynamic]
+version = {attr = "apge.__version__"}
+
 [tool.setuptools]
 packages = ["apge"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-apge = ["static/*", "scaffold/**/*", "scaffold/*"]
+apge = ["static/*", "scaffold/**/*", "scaffold/*", "scaffold/CONVENTIONS.txt"]

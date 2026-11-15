@@ -116,6 +116,7 @@ class PartyServer:
         trusted = request.remote_addr in LOOPBACK or os.environ.get('APGE_REMOTE_HOST') == '1'
         config = {
             'role': 'host' if is_host_page else 'player',
+            'apgeVersion': __version__,
             # Only the machine running the game gets host controls; a phone that opens /
             # sees the host screen read-only
             'hostKey': self.host_key if (is_host_page and trusted) else None,

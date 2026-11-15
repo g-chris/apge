@@ -49,6 +49,7 @@ def new_game(target, title):
     print('  python3 -m venv venv && source venv/bin/activate')
     print('  pip install -r requirements.txt')
     print('  python app.py')
+    print('\nThen fill in the GAME DESIGN section of CONVENTIONS.txt from your design doc.')
 
 
 def main(argv=None):

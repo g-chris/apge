@@ -1,5 +1,14 @@
 # APGE Changelog
 
+## 0.1.1 (2026-11-15)
+
+- New games get `CONVENTIONS.txt` (changelog format, versions and releases, branches,
+  PR template and review checklist, reusable/DRY code, APGE rules, testing). It lives
+  in apge/scaffold/ as the single copy; the engine's CLAUDE.md points to it
+- The version is defined once (`apge.__version__`): pyproject.toml reads it, and
+  apge.js gets it from the server instead of a hard-coded copy
+- No API changes: games on 0.1.0 can bump their pin without code changes
+
 ## 0.1.0 (2026-11-01)
 
 First release, extracted from Hollywood Moguls 1.0.1 and redesigned around what its
