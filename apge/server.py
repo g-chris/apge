@@ -27,7 +27,6 @@ log = logging.getLogger('apge')
 
 APGE_STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LOOPBACK = {'127.0.0.1', '::1', 'localhost'}
-MAX_NAME = 24
 
 
 def resource_dir(base_dir):
@@ -192,7 +191,7 @@ class PartyServer:
         @on('apge:join')
         def join(data=None):
             data = data or {}
-            name = ' '.join(str(data.get('name', '')).split())[:MAX_NAME]
+            name = ' '.join(str(data.get('name', '')).split())[:game.max_name]
             token = str(data.get('token') or '')
             if not name:
                 raise Reject('Please enter a name.')
@@ -242,9 +241,9 @@ class PartyServer:
         @on('apge:host_command')
         def host_command(data=None):
             data = data or {}
-            if self.conns.get(request.sid, {}).get('role') != 'host':
-                raise Reject('Only the host computer can do that.')
             command = data.get('command')
+            if not self._may_command(request.sid, command):
+                raise Reject('Only the host computer can do that.')
             if command == 'start':
                 game._start()
             elif command == 'skip':
@@ -253,6 +252,9 @@ class PartyServer:
                 game._skip()
             elif command == 'reset':
                 game._reset()
+            elif command == 'quit':
+                for player_id in game._quit():
+                    self._unbind(player_id, 'quit')
             elif command == 'kick':
                 self._kick(data.get('player_id'))
             else:
@@ -276,6 +278,22 @@ class PartyServer:
         self.conns[request.sid] = {'role': 'player', 'player_id': player.id}
         self.player_sid[player.id] = request.sid
 
+    def _may_command(self, sid, command):
+        """Host computer: any command. The VIP's phone: only the game's vip_commands."""
+        conn = self.conns.get(sid, {})
+        if conn.get('role') == 'host':
+            return True
+        if conn.get('role') == 'player' and command in self.game.vip_commands:
+            return conn['player_id'] is not None and conn['player_id'] == self.game._vip_id()
+        return False
+
+    def _unbind(self, player_id, reason):
+        """Detach a removed player's phone; it goes back to the join screen."""
+        sid = self.player_sid.pop(player_id, None)
+        if sid:
+            self.conns[sid] = {'role': 'guest', 'player_id': None}
+            self.socketio.emit('apge:kicked', {'reason': reason}, to=sid)
+
     def _player_for(self, sid):
         conn = self.conns.get(sid)
         player = conn and conn['player_id'] and self.game.players.get(conn['player_id'])
@@ -290,10 +308,7 @@ class PartyServer:
         player = game.players.pop(player_id, None)
         if not player:
             raise Reject('No such player.')
-        sid = self.player_sid.pop(player_id, None)
-        if sid:
-            self.conns[sid] = {'role': 'guest', 'player_id': None}
-            self.socketio.emit('apge:kicked', {}, to=sid)
+        self._unbind(player_id, 'kick')
         game.mark_dirty()
 
     # ---- pushing state ----------------------------------------------------

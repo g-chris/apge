@@ -15,7 +15,7 @@ You write the rules and the art. APGE handles:
 ## Start a new game
 
 ```bash
-pip install "apge[testing] @ git+https://github.com/g-chris/apge@v0.1.1"
+pip install "apge[testing] @ git+https://github.com/g-chris/apge@v0.2.0"
 python -m apge new my-game --title "My Game"
 cd my-game
 python app.py                 # host screen opens at http://localhost:8080
@@ -84,8 +84,29 @@ PartyServer(MyGame(), base_dir=os.path.dirname(os.path.abspath(__file__))).run()
 | Host **Skip** behaves as if the timer ran out (override with `@on_skip`), so no phase can soft-lock | A player who left during packaging froze the game |
 | Continue screens don't wait for disconnected players | One sleeping phone held up everyone |
 | A name that's in use is refused unless it's the same browser (per-browser token) | A second "Ann" silently took over the first Ann's studio |
-| Only the computer running the game gets host controls; other screens opening `/` get a read-only view | Any phone could press Start |
+| Only the computer running the game gets host controls; other screens opening `/` get a read-only view. A game can opt in to one VIP phone sending chosen commands (never Skip) | Any phone could press Start |
 | The socket.io client is bundled | The game didn't load on Wi-Fi without internet |
+
+### Lobby setup, VIP phones and quitting
+
+```python
+class MyGame(Game):
+    max_name = 15                              # longest name the join form/server accept
+    vip_commands = ('start', 'reset', 'quit')  # what the VIP's phone may do (never 'skip')
+
+    def vip(self):                             # default: first connected player
+        return next((p for p in self.connected_players() if p.public.get('avatar')), None)
+
+    def lobby_ready(self):                     # advisory; the bot harness waits for it
+        return self.everyone(lambda p: 'avatar' in p.public, include_disconnected=False)
+
+    @action('draw_avatar', phases='lobby')     # lobby actions are declared like any other
+    def draw_avatar(self, player, data): ...
+```
+
+On the phone, `apge.isVip()` says whether to show those buttons; they call `apge.start()`,
+`apge.reset()` or `apge.quit()` as the host would. `quit` sends everyone back to the join
+screen with an empty lobby (`Game.on_quit()` clears game state); `reset` keeps the roster.
 
 ### State and views
 
@@ -106,7 +127,8 @@ apge.action('submit', {text}).then(ack => ...);  // errors are shown as a toast 
 apge.ready();                                    // Continue
 apge.timeRemaining(); apge.bindCountdown('timer-el');
 apge.mountJoinForm('el'); apge.mountHostPanel('el');   // optional ready-made UI
-apge.start(); apge.skip(); apge.reset(); apge.kick(id); // host only
+apge.start(); apge.skip(); apge.reset(); apge.quit(); apge.kick(id); // host (VIP: vip_commands)
+apge.isHost(); apge.isVip();
 apge.relay('tilt', {x, y});                      // realtime: phone -> host screen, no server state
 apge.on('relay', ({player_id, event, data}) => ...);    // on the host page
 ```
@@ -158,7 +180,7 @@ Link `releases/latest/download/<file>` from your README.
 
 ## Versioning
 
-Games pin an exact tag (`apge @ git+https://github.com/g-chris/apge@v0.1.1`). Improve APGE while building a game, tag a new version, and bump the game's pin when you're ready. Breaking changes bump the minor version while APGE is 0.x, and [CHANGELOG.md](CHANGELOG.md) says what to change.
+Games pin an exact tag (`apge @ git+https://github.com/g-chris/apge@v0.2.0`). Improve APGE while building a game, tag a new version, and bump the game's pin when you're ready. Breaking changes bump the minor version while APGE is 0.x, and [CHANGELOG.md](CHANGELOG.md) says what to change.
 
 ## Licence
 

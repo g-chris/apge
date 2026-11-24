@@ -129,6 +129,11 @@ class Game:
     max_players = 12
     allow_late_join = False   # may new names join after the game has started?
     end_phase = 'game_over'   # phase that means "this game is finished"
+    max_name = 24             # longest player name the join form and server accept
+    # Host commands a player's phone may send when that player is the VIP (see vip()),
+    # e.g. ('start', 'reset', 'quit'). Skip stays with the host computer so a phone
+    # can never rush everyone else.
+    vip_commands = ()
 
     # Collected from decorators by __init_subclass__
     _phases = {}
@@ -185,6 +190,25 @@ class Game:
     def on_player_reconnected(self, player):
         pass
 
+    def vip(self):
+        """The player whose phone may send `vip_commands`. Default: first connected player.
+
+        Override to choose differently (e.g. the first player to finish setting up).
+        """
+        return next(iter(self.connected_players()), None)
+
+    def lobby_ready(self):
+        """True when everyone has finished any setup they do in the lobby.
+
+        Only advisory: the host can still Start (on_start may Reject). Shown to screens as
+        `lobby_ready`, and the bot harness waits for it before pressing Start.
+        """
+        return True
+
+    def on_quit(self):
+        """Host ended the session: every player is about to be removed. Clear game state."""
+        self.public = {}
+
     def host_view(self):
         """What the host/TV screen receives. Default: the public view."""
         return self.public_view()
@@ -208,6 +232,9 @@ class Game:
             'players': [p.to_public() for p in self.players.values()],
             'min_players': self.min_players,
             'max_players': self.max_players,
+            'max_name': self.max_name,
+            'vip_id': self._vip_id(),
+            'lobby_ready': self.phase == LOBBY and bool(self.lobby_ready()),
             'version': self.version,
             'data': self.public,
         }
@@ -291,6 +318,22 @@ class Game:
         return next((p for p in self.players.values() if p.name == name), None)
 
     # ---- engine internals (called by PartyServer under self.lock) --------
+
+    def _vip_id(self):
+        if not self.vip_commands:
+            return None
+        player = self.vip()
+        return player.id if player else None
+
+    def _quit(self):
+        """Back to the lobby with nobody in it. Returns the removed players' ids."""
+        self.cancel_timer()
+        self.phase = LOBBY
+        self.on_quit()
+        removed = list(self.players)
+        self.players = {}
+        self.mark_dirty()
+        return removed
 
     def _timer_fired(self, token):
         with self.lock:

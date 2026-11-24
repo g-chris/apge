@@ -14,6 +14,8 @@ apge/scaffold/CONVENTIONS.txt - the same file every new game gets. Edit it there
 - Timers are token-checked; never start a raw `threading.Timer` that touches state.
 - No phase may be able to wait forever: host Skip must always do something.
 - Private data goes in `player.private`; never broadcast it in public views.
+- Host controls belong to the host computer. The only exception is a game's opt-in
+  `vip_commands` for one VIP phone, and Skip must never be one of them.
 - Everything must work offline on a LAN (no CDNs).
 
 ## Before tagging a release

@@ -240,8 +240,22 @@ class Result:
         return '\n'.join(lines)
 
 
+def _start_when_ready(host, game, wait, result):
+    """Press Start once game.lobby_ready() (lobby setup done), or after `wait` seconds anyway -
+    like a host who gets impatient with someone still drawing their avatar."""
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        with game.lock:
+            if game.phase == LOBBY and game.lobby_ready():
+                break
+        time.sleep(0.05)
+    ack = host.call('apge:host_command', {'command': 'start'}, timeout=5)
+    if not ack.get('ok'):
+        result.violations.append(f'start refused: {ack}')
+
+
 def run_scenario(make_game, bots, seed=0, games=1, time_scale=0.05, stall=20.0,
-                 host_skip_after=None, invariant=None, timeout=300.0):
+                 host_skip_after=None, invariant=None, timeout=300.0, start_wait=5.0):
     """Play `games` full games with the given bots. Returns a Result.
 
     make_game:        zero-arg callable returning a fresh Game
@@ -249,6 +263,8 @@ def run_scenario(make_game, bots, seed=0, games=1, time_scale=0.05, stall=20.0,
     host_skip_after:  if set, the host presses Skip when nothing has changed for this
                       many seconds (simulates a host rescuing the game from a ghost)
     invariant:        callable(game) run under the game lock; raise AssertionError to fail
+    start_wait:       longest to wait for game.lobby_ready() before pressing Start (bots do
+                      their lobby setup, e.g. drawing an avatar, in decide() like any phase)
     """
     rng = random.Random(seed)
     result = Result()
@@ -263,9 +279,7 @@ def run_scenario(make_game, bots, seed=0, games=1, time_scale=0.05, stall=20.0,
         time.sleep(0.3)
 
         games_done = 0
-        start_ack = host.call('apge:host_command', {'command': 'start'}, timeout=5)
-        if not start_ack.get('ok'):
-            result.violations.append(f'start refused: {start_ack}')
+        _start_when_ready(host, game, start_wait, result)
 
         last_version, last_change, last_phase = None, time.time(), None
         result.reason = 'timeout'
@@ -294,7 +308,7 @@ def run_scenario(make_game, bots, seed=0, games=1, time_scale=0.05, stall=20.0,
                 host.call('apge:host_command', {'command': 'reset'}, timeout=5)
                 if game.phase != LOBBY:
                     result.violations.append(f'reset left the game in {game.phase}')
-                host.call('apge:host_command', {'command': 'start'}, timeout=5)
+                _start_when_ready(host, game, start_wait, result)
                 last_change = time.time()
                 continue
             if host_skip_after and idle_for > host_skip_after and phase != LOBBY:
