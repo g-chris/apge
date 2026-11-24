@@ -9,8 +9,8 @@ import os
 APGE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-def datas(game_dirs=('templates', 'static')):
-    """Files to bundle: the game's template/static folders plus APGE's own client files."""
+def datas(game_dirs=('templates', 'static', 'art')):
+    """Files to bundle: the game's templates, static files and art, plus APGE's own client files."""
     result = [(d, d) for d in game_dirs if os.path.isdir(d)]
     result.append((os.path.join(APGE_DIR, 'static'), 'apge/static'))
     return result

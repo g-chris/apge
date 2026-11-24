@@ -17,6 +17,11 @@ apge/scaffold/CONVENTIONS.txt - the same file every new game gets. Edit it there
 - Host controls belong to the host computer. The only exception is a game's opt-in
   `vip_commands` for one VIP phone, and Skip must never be one of them.
 - Everything must work offline on a LAN (no CDNs).
+- Developer Mode writes files, so it runs only when asked for (`--dev`), only from source
+  (never a frozen build), only for loopback requests, and writes need the page's
+  `X-APGE-Dev` key. Art paths come from the asset list and version regex, never the client.
+- Sample screens build a throwaway game instance (`_preview_elapsed` set): they must never
+  start timer threads or touch the live game.
 
 ## Before tagging a release
 - `python -m unittest discover tests` (protocol tests + harness self-tests)
