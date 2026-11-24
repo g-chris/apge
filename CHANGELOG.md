@@ -32,6 +32,13 @@ library and an empty Developer Mode).
   rectangular canvases, a colour picker, gap-free strokes, redo and zoom
 - `apge.phaseStarted`: when this screen saw the current phase begin (sample screens shift
   it by `Screen.elapsed`, so time-based reveals preview correctly)
+- **Countdown warnings**: `apge.bindCountdown(el, bar, {urgentAt, onUrgent})` - pick when
+  the timer turns `apge-urgent` (a number of seconds, or a function of the view returning
+  seconds or null for "not this screen"; default 5 as before), and get one callback per
+  timer as it counts past that point (not after a reload that lands below it)
+- **`APGE.sound.beep({freq, ms, volume})`**: a short tone with no audio files. Browsers keep
+  a page silent until it's clicked, tapped or typed on; APGE switches sound on at the first
+  of those, and `APGE.sound.allowed()` says whether it has happened yet
 
 ### Packaging / Internal
 - `apge.packaging.datas()` bundles the game's `art/` folder

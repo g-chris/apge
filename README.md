@@ -126,6 +126,8 @@ apge.screens({join: 'join', lobby: 'lobby', answer: 'answer', '*': 'wait'});  //
 apge.action('submit', {text}).then(ack => ...);  // errors are shown as a toast automatically
 apge.ready();                                    // Continue
 apge.timeRemaining(); apge.bindCountdown('timer-el');
+apge.bindCountdown('timer-el', null, {urgentAt: 10, onUrgent: () => APGE.sound.beep()});
+APGE.sound.allowed();                            // false until the page has been clicked/tapped
 apge.mountJoinForm('el'); apge.mountHostPanel('el');   // optional ready-made UI
 apge.start(); apge.skip(); apge.reset(); apge.quit(); apge.kick(id); // host (VIP: vip_commands)
 apge.isHost(); apge.isVip();
