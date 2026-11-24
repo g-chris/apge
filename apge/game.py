@@ -168,6 +168,8 @@ class Game:
         self._goto_depth = 0
         self.time_scale = float(os.environ.get('APGE_TIME_SCALE', '1'))
         self._server = None      # set by PartyServer
+        # Developer Mode sample screens: seconds into the phase to show. Set, timers never run
+        self._preview_elapsed = None
 
     # ---- hooks for games to override -------------------------------------
 
@@ -252,7 +254,8 @@ class Game:
         if self._goto_depth > 50:
             raise RuntimeError('goto() recursion - does a phase enter hook goto() itself?')
         try:
-            log.info('phase %s -> %s', self.phase, phase_name)
+            if self._preview_elapsed is None:
+                log.info('phase %s -> %s', self.phase, phase_name)
             self.phase = phase_name
             for p in self.players.values():
                 p.ready = False
@@ -271,6 +274,9 @@ class Game:
         """Start (or replace) the phase timer. Expiry calls the phase's timeout handling."""
         token = uuid.uuid4().hex
         self.timer = {'token': token, 'duration': seconds, 'started': time.time()}
+        if self._preview_elapsed is not None:
+            self.mark_dirty()
+            return
         t = threading.Timer(seconds * self.time_scale, self._timer_fired, args=[token])
         t.daemon = True
         t.start()
@@ -285,7 +291,10 @@ class Game:
     def timer_view(self):
         if not self.timer:
             return None
-        elapsed = (time.time() - self.timer['started']) / self.time_scale
+        if self._preview_elapsed is not None:
+            elapsed = self._preview_elapsed
+        else:
+            elapsed = (time.time() - self.timer['started']) / self.time_scale
         return {'token': self.timer['token'], 'duration': self.timer['duration'],
                 'remaining': max(0.0, self.timer['duration'] - elapsed)}
 

@@ -28,4 +28,4 @@ packages = ["apge"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-apge = ["static/*", "scaffold/**/*", "scaffold/*", "scaffold/CONVENTIONS.txt"]
+apge = ["static/*", "templates/*", "scaffold/**/*", "scaffold/*", "scaffold/CONVENTIONS.txt"]

@@ -9,6 +9,14 @@
  *   apge.ready();                         // "Continue" in ready phases
  *   apge.start(); apge.skip(); apge.reset(); apge.quit();   // host computer (and the VIP's
  *                                                           // phone, for the game's vip_commands)
+ *   apge.phaseStarted                     // Date.now() when this screen saw the phase begin
+ *
+ *   APGE.art.has('agent')                 // the game's art (see apge/art.py): false until the
+ *   APGE.art.url('agent')                 // asset has a version "in game" - draw a placeholder
+ *   APGE.art.draw(ctx, 'agent', x, y, w, h)   // canvas: fit inside the box; false if no art
+ *
+ * Developer Mode opens pages with ?apge-preview=<screen>: no socket, a sample state from the
+ * server, and art drafts sent in by the editor (postMessage) instead of the saved art.
  *
  * Rendering is up to the game: DOM, canvas, Phaser... APGE only delivers state.
  */
@@ -46,6 +54,16 @@
         this._handlers = {};
         this._timerToken = null;
         this._timerReceived = 0;
+        this.phaseStarted = Date.now();
+        this.preview = config.preview || null;
+        const self = this;
+
+        if (this.preview) {
+            this.socket = null;
+            this.name = null;
+            startPreview(this);
+            return;
+        }
 
         // Per-browser token: lets the server tell "me again" from "someone else with my name"
         this.token = storageGet('localStorage', 'apge.token');
@@ -63,7 +81,6 @@
             reconnectionDelayMax: 3000,
             timeout: 20000
         });
-        const self = this;
 
         socket.on('connect', function () {
             self.connected = true;
@@ -126,11 +143,15 @@
         // The server sends a fresh `remaining` with every view; count down locally from there
         this._timerToken = view.timer ? view.timer.token : null;
         this._timerReceived = Date.now();
-        if (previousPhase !== view.phase) this._emit('phase', view.phase, view, previousPhase);
+        if (previousPhase !== view.phase) {
+            this.phaseStarted = Date.now() - (this.preview ? (this.preview.elapsed || 0) * 1000 : 0);
+            this._emit('phase', view.phase, view, previousPhase);
+        }
         this._emit('state', view);
     };
 
     function ackPromise(socket, event, payload) {
+        if (!socket) return Promise.resolve({ok: false, error: 'This is a Developer Mode preview.'});
         return new Promise(function (resolve) {
             let done = false;
             const timer = setTimeout(function () {
@@ -182,7 +203,7 @@
 
     /** Fire-and-forget input straight to the host screen (realtime controller games). */
     Client.prototype.relay = function (event, data) {
-        this.socket.volatile.emit('apge:relay', {event: event, data: data});
+        if (this.socket) this.socket.volatile.emit('apge:relay', {event: event, data: data});
     };
 
     // ---- host -----------------------------------------------------------------
@@ -357,9 +378,95 @@
         return this;
     };
 
+    // ---- Developer Mode previews -----------------------------------------------------
+
+    function startPreview(client) {
+        const preview = client.preview;
+        function begin() {
+            if (preview.error) {
+                const box = document.createElement('pre');
+                box.className = 'apge-preview-error';
+                box.textContent = 'This sample screen failed to build:\n\n' + preview.error;
+                document.body.appendChild(box);
+                return;
+            }
+            client._onState(preview.view);
+        }
+        // Let the page's own scripts subscribe first, as they would before a socket connects
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin);
+        else setTimeout(begin, 0);
+        // The art editor sends drafts to its preview frames; show them in place of saved art
+        art.onChange(function () { if (client.view) client._onState(client.view); });
+    }
+
+    // ---- game art -------------------------------------------------------------------------
+
+    const art = (function () {
+        const entries = (window.APGE_CONFIG || {}).art || {};
+        const images = {};
+        const listeners = [];
+
+        function info(id) { return entries[id] || null; }
+        function url(id) { const a = entries[id]; return a && a.url ? a.url : null; }
+
+        /** A loaded <img> for canvas drawing, or null while it loads (canvas loops redraw). */
+        function image(id) {
+            const src = url(id);
+            if (!src) return null;
+            let img = images[id];
+            if (!img || img.dataset.src !== src) {
+                img = images[id] = new Image();
+                img.dataset.src = src;
+                img.onerror = function () { img.dataset.failed = '1'; };
+                img.src = src;
+            }
+            return img.complete && img.naturalWidth ? img : null;
+        }
+
+        function failed(id) { const img = images[id]; return !!(img && img.dataset.failed); }
+
+        /**
+         * Draw an asset inside a box, keeping its shape. opts.fit: 'contain' (default) or
+         * 'fill' (stretch to the box); opts.align: 'center' (default), 'bottom' or 'top'.
+         * Returns false when there's nothing to draw, so the caller can draw a placeholder.
+         */
+        function draw(ctx, id, x, y, w, h, opts) {
+            opts = opts || {};
+            const img = image(id), a = entries[id];
+            // Still loading: draw nothing rather than flash the placeholder. Broken: placeholder
+            if (!img) return !!url(id) && !failed(id);
+            let dw = w, dh = h;
+            if (opts.fit !== 'fill') {
+                const s = Math.min(w / img.naturalWidth, h / img.naturalHeight);
+                dw = img.naturalWidth * s;
+                dh = img.naturalHeight * s;
+            }
+            const dx = x + (w - dw) / 2;
+            const dy = opts.align === 'bottom' ? y + h - dh : opts.align === 'top' ? y : y + (h - dh) / 2;
+            const smooth = ctx.imageSmoothingEnabled;
+            ctx.imageSmoothingEnabled = !a.pixelated;
+            ctx.drawImage(img, dx, dy, dw, dh);
+            ctx.imageSmoothingEnabled = smooth;
+            return true;
+        }
+
+        function onChange(fn) { listeners.push(fn); }
+
+        window.addEventListener('message', function (e) {
+            const m = e.data;
+            if (e.origin !== window.location.origin || !m || m.apge !== 'art' || !entries[m.id]) return;
+            entries[m.id] = Object.assign({}, entries[m.id], m.info);
+            listeners.forEach(function (fn) { try { fn(m.id); } catch (err) { console.error(err); } });
+        });
+
+        return {has: function (id) { return !!url(id); }, url: url, info: info, image: image,
+                draw: draw, onChange: onChange};
+    })();
+
     window.APGE = {
         connect: function (options) { return new Client(options); },
         escapeHtml: escapeHtml,
+        art: art,
         version: (window.APGE_CONFIG || {}).apgeVersion
     };
 })();
