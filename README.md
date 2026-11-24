@@ -15,7 +15,7 @@ You write the rules and the art. APGE handles:
 ## Start a new game
 
 ```bash
-pip install "apge[testing] @ git+https://github.com/g-chris/apge@v0.2.0"
+pip install "apge[testing] @ git+https://github.com/g-chris/apge@v0.3.0"
 python -m apge new my-game --title "My Game"
 cd my-game
 python app.py                 # host screen opens at http://localhost:8080
@@ -126,6 +126,8 @@ apge.screens({join: 'join', lobby: 'lobby', answer: 'answer', '*': 'wait'});  //
 apge.action('submit', {text}).then(ack => ...);  // errors are shown as a toast automatically
 apge.ready();                                    // Continue
 apge.timeRemaining(); apge.bindCountdown('timer-el');
+apge.bindCountdown('timer-el', null, {urgentAt: 10, onUrgent: () => APGE.sound.beep()});
+APGE.sound.allowed();                            // false until the page has been clicked/tapped
 apge.mountJoinForm('el'); apge.mountHostPanel('el');   // optional ready-made UI
 apge.start(); apge.skip(); apge.reset(); apge.quit(); apge.kick(id); // host (VIP: vip_commands)
 apge.isHost(); apge.isVip();
@@ -134,6 +136,35 @@ apge.on('relay', ({player_id, event, data}) => ...);    // on the host page
 ```
 
 Rendering is entirely yours: DOM, canvas, Phaser or anything else. APGE only delivers state. For realtime "phone as controller" games, run the action on the host page and stream input with `relay()`. Keep the server-side phases for the lobby, rounds and scoring.
+
+## Art and Developer Mode
+
+List every picture the game needs, and a sample state for each screen, then hand both to the server:
+
+```python
+from apge.art import Asset
+from apge.dev import Screen
+
+ART = [Asset('agent', 'Agent Kevin', 'Characters', size=(32, 48), screens=['frisk'])]
+SCREENS = [Screen('frisk', 'Random frisk', setup=lambda game: put_it_in_the_frisk_phase(game))]
+PartyServer(MyGame(), base_dir, art=ART, palette=PALETTE, screens=SCREENS)
+```
+
+`python app.py --dev` (or `APGE_DEV=1`) opens **Developer Mode** at `/dev`:
+
+- **Art**: Finder-style columns (category, art, versions) and a pixel editor. Every canvas can be its own size (up to 256x256), and you can import a PNG made in another app. **Save** overwrites the open version. **Save As** makes a new version, and can save into a different piece of art to start from this one. **Use in game** picks which version the game shows. The live preview shows the real screens the art appears on (`Asset.screens`), including your unsaved drawing.
+- **Screens**: every sample screen, rendered by the game's real pages from a made-up state, so you can check (and debug) any screen without playing to it.
+
+Art lives in the game's `art/` folder (`<asset>/v1.json`, plus `asset.json` saying which version is in game). Commit it; `apge.packaging.datas()` bundles it. Pages get it as `APGE.art`:
+
+```js
+APGE.art.has('agent');  APGE.art.url('agent');   // false/null until a version is in game: draw a placeholder
+APGE.art.draw(ctx, 'agent', x, y, w, h, {fit: 'contain', align: 'bottom'});   // canvas; false if nothing drawn
+```
+
+Sample screens build a fresh copy of the game (`type(game)()`, so the game class must construct with no arguments), add sample players and call `setup(game)`. Timers never run in these copies, and `Screen(elapsed=...)` sets how far into the phase the screen is shown (for animations; `apge.phaseStarted` agrees). Developer Mode only works from source, on the computer running the game. Packaged builds and phones never get it, because it writes files.
+
+The pixel editor (`/apge/pixelart.js`) is the same one players can draw avatars with, so player drawings and game art match.
 
 ## Testing
 
@@ -177,10 +208,11 @@ Link `releases/latest/download/<file>` from your README.
 | `APGE_NO_BROWSER=1` | Don't open the host page on startup |
 | `APGE_REMOTE_HOST=1` | Give host controls to any device that opens `/` (e.g. a smart TV browser) |
 | `APGE_TIME_SCALE` | Multiply all timers (tests use 0.05) |
+| `APGE_DEV=1` | Developer Mode, same as `--dev` (source only) |
 
 ## Versioning
 
-Games pin an exact tag (`apge @ git+https://github.com/g-chris/apge@v0.2.0`). Improve APGE while building a game, tag a new version, and bump the game's pin when you're ready. Breaking changes bump the minor version while APGE is 0.x, and [CHANGELOG.md](CHANGELOG.md) says what to change.
+Games pin an exact tag (`apge @ git+https://github.com/g-chris/apge@v0.3.0`). Improve APGE while building a game, tag a new version, and bump the game's pin when you're ready. Breaking changes bump the minor version while APGE is 0.x, and [CHANGELOG.md](CHANGELOG.md) says what to change.
 
 ## Licence
 

@@ -42,3 +42,9 @@
 .apge-controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 .apge-note { text-align: center; opacity: 0.7; }
 .apge-urgent { color: #e50914; }
+
+/* Developer Mode sample screen whose setup raised: show the traceback in the frame */
+.apge-preview-error {
+    position: fixed; inset: 0; margin: 0; padding: 16px; overflow: auto; z-index: 1000;
+    background: #2a0f12; color: #ffd6d6; font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap;
+}

@@ -205,6 +205,13 @@ Safety and robustness
   self.start_timer / phase timers (they're token-checked and locked).
 - Hidden information never goes in self.public or player.public.
   Override player_view/host_view if a screen needs a tailored view.
+- Art: list every picture in one Asset list (dev.py) and draw it with
+  APGE.art / the game's art() helper, which shows a labelled placeholder
+  until a version is in game. Never hard-code image paths in the JS. Make
+  and pick art in Developer Mode (python app.py --dev) and commit art/.
+- Every screen gets a Developer Mode sample Screen, and every Asset lists
+  the screens it appears on, so its live preview is right. A new phase or
+  screen adds its sample in the same PR.
 - See apge/CLAUDE.md for the engine's own principles before editing APGE.
 
 -- TESTING ------------------------------------------------------------------

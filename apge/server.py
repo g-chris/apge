@@ -6,6 +6,10 @@ PartyServer: hosts a Game for one host screen and many phones on the local netwo
 
 Serves the game's `templates/host.html` at / and `templates/player.html` at /player.
 Templates call `{{ apge_head() }}` in <head> to load the APGE client.
+
+Optional: `art` (a list of apge.art.Asset) and `palette` give the game an art library, served
+to pages as APGE.art; `screens` (apge.dev.Screen) are sample states for Developer Mode, which
+`python app.py --dev` turns on (see apge/dev.py).
 """
 import io
 import logging
@@ -16,17 +20,18 @@ import sys
 import threading
 import webbrowser
 
-from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
+from flask import Flask, abort, jsonify, render_template, request, send_file, send_from_directory
 from flask_socketio import SocketIO, join_room, leave_room
 from markupsafe import Markup
 
 from . import __version__
+from .art import ArtError, ArtLibrary
+from .dev import LOOPBACK, DevMode, dev_requested
 from .game import LOBBY, Player, Reject
 
 log = logging.getLogger('apge')
 
 APGE_STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
-LOOPBACK = {'127.0.0.1', '::1', 'localhost'}
 
 
 def resource_dir(base_dir):
@@ -53,7 +58,7 @@ def port_in_use(port):
 
 class PartyServer:
     def __init__(self, game, base_dir, port=None, host_template='host.html',
-                 player_template='player.html'):
+                 player_template='player.html', art=None, palette=None, screens=None, dev=None):
         self.game = game
         game._server = self
         root = resource_dir(base_dir)
@@ -61,6 +66,8 @@ class PartyServer:
         self.host_key = secrets.token_urlsafe(16)
         self.host_template = host_template
         self.player_template = player_template
+        self.art = ArtLibrary(os.path.join(root, 'art'), art or (), palette)
+        self.dev = DevMode(self, screens, dev_requested() if dev is None else dev)
 
         self.app = Flask(game.__class__.__module__,
                          template_folder=os.path.join(root, 'templates'),
@@ -72,6 +79,7 @@ class PartyServer:
         self.player_sid = {}   # player_id -> current sid
 
         self._routes()
+        self.dev.routes(self.app)
         self._events()
 
     # ---- HTTP -------------------------------------------------------------
@@ -104,6 +112,16 @@ class PartyServer:
             buf.seek(0)
             return send_file(buf, mimetype='image/png')
 
+        @app.route('/apge-art/<asset_id>.png')
+        def art_png(asset_id):
+            try:
+                png = self.art.render_png(asset_id)
+            except ArtError:
+                abort(404)
+            response = send_file(io.BytesIO(png), mimetype='image/png')
+            response.headers['Cache-Control'] = 'no-cache'
+            return response
+
         @app.route('/apge-info')
         def info():
             return jsonify({'title': self.game.title, 'player_url': self.player_url(),
@@ -119,7 +137,13 @@ class PartyServer:
             # Only the machine running the game gets host controls; a phone that opens /
             # sees the host screen read-only
             'hostKey': self.host_key if (is_host_page and trusted) else None,
+            'art': self.art.client_config(),
         }
+        preview = request.args.get('apge-preview')
+        if preview and self.dev.allowed():
+            # A Developer Mode sample screen: no socket, a made-up state, no host controls
+            config['preview'] = self.dev.preview_config(preview)
+            config['hostKey'] = None
         import json
         return Markup(
             '<link rel="stylesheet" href="/apge/apge.css">\n'
@@ -368,12 +392,15 @@ class PartyServer:
         print('=' * 50)
         print(f'\n  Host screen:  http://localhost:{self.port}')
         print(f'  Players join: {self.player_url()}')
+        if self.dev.enabled:
+            print(f'  Developer Mode: http://localhost:{self.port}/dev')
         print('\n  Keep this window open while you play.')
         print('  Close it (or press Ctrl+C) to stop the game.')
         print('=' * 50 + '\n')
 
         if open_browser:
-            threading.Timer(1.5, webbrowser.open, args=[f'http://localhost:{self.port}']).start()
+            page = '/dev' if self.dev.enabled else ''
+            threading.Timer(1.5, webbrowser.open, args=[f'http://localhost:{self.port}{page}']).start()
 
         # No debug reloader: it runs the script twice and can't work in a packaged build
         self.socketio.run(self.app, host='0.0.0.0', port=self.port, debug=False,
